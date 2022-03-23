@@ -6,7 +6,7 @@ from dash.dependencies import Input, Output
 import plotly.express as px
 
 
-spacex_df = pd.read_csv("spacex_launch_dash.csv")
+spacex_df = pd.read_csv("slider_example/spacex_launch_dash.csv")
 max_payload = spacex_df['Payload Mass (kg)'].max()
 min_payload = spacex_df['Payload Mass (kg)'].min()
 
@@ -57,11 +57,6 @@ app.layout = html.Div(children=[html.H1('SpaceX Launch Records Dashboard',
                             
                                 html.Div(dcc.Graph(id='success-payload-scatter-chart')),
                               ])
-
-app.css.append_css({
-    'external_url': 'https://codepen.io/chriddyp/pen/bWLwgP.css'
-})
-
 
 @app.callback(
      Output(component_id='success-pie-chart',component_property='figure'),
