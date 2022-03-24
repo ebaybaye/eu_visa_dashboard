@@ -15,24 +15,47 @@ from dash import dcc, html, Input, Output
 import dash_bootstrap_components as dbc
 from jupyter_dash import JupyterDash
 
+# To convert country names and iso codes
+from pycountry_convert import country_alpha2_to_country_name, country_alpha3_to_country_alpha2
 
 # Set renderer to view in jupyter notebook
 pio.renderers.default = "notebook"
 
 
 ####################################
-# Define data and plotting functions
+# Load and prepare data
 ####################################
 
-# Load and prepare map data
-def prepare_data():
-    df = pd.read_csv("data/bluecard_EU_df.csv")
-    # Remove index column named "unnamed: 0"
-    df.drop(df.filter(regex="Unname"),axis=1, inplace=True)
+def load_data():
+    # Load data globally
+    df = pd.read_csv("data/df_iso_schengen_origin.csv")
+
+    # Add columns for full Schengen country names
+    df["Schengen_country"] = df["SCH_CODE"].apply(lambda x: country_alpha2_to_country_name(country_alpha3_to_country_alpha2(x)))
+
+    # Capatilize all column names to prevent string matching conflicts
+    df.columns = [x.capitalize() for x in df.columns]
+
+    # drop all nan from country column
+    df.dropna(subset = ['Schengen_country'], inplace = True)
+
     return df
 
-# Load data
-df = prepare_data()
+df = load_data()
+
+####################################
+# Define features that can be selected by used from columns names
+# Save features in list
+feature_list = df.columns.unique().to_list()
+# Select features to be excluded
+remove_features = ['Year', 'Country_code', 'Sch_code', 'Schengen_country', "Country"]
+# Remove those features from list
+feature_list = [ele for ele in feature_list if ele not in remove_features]
+
+
+####################################
+# Define data and plotting functions
+####################################
 
 # Header content to introduce the dashboard
 def drawHeader():
@@ -52,12 +75,12 @@ def drawHeader():
 
 
 # Create world map for visa statistics
-def drawWorldMap(feature = "total_population"):
+def drawWorldMap(data = df, feature = "total_population"):
     figure = go.Figure(data=go.Choropleth(
-                        locations = df['Country_CODE'],
-                        z = df[str(feature)].round(2),
-                        #text = df['duration_days'],
-                        #hover_name=df_blue['duration_days'].round(2), 
+                        locations = data['Country_code'],
+                        z = data[str(feature)].round(2),
+                        #text = data['duration_days'],
+                        #hover_name=data_blue['duration_days'].round(2), 
                         colorscale = 'YlGnBu',
                         autocolorscale=False,
                         reversescale=False,
@@ -69,7 +92,10 @@ def drawWorldMap(feature = "total_population"):
                     )).update_layout(
                         width=880,
                         height=500,
+                        paper_bgcolor='rgba(0,0,0,0)',
+                        plot_bgcolor='#4E5D6C',
                         geo=dict(
+                            bgcolor='rgba(0,0,0,0)',
                             showframe=False,
                             showcoastlines=False,
                             projection_type='equirectangular'
@@ -112,12 +138,13 @@ worldmap_card = html.Div([
                 ])
 
 # Histogram displaying map statistics in detail and ordered by country
-def drawHistogram(feature = "age"):
-    # plot
-    figure = px.histogram(
-                        x=df[str(feature)], 
+def drawBarplot(data = df, feature = "Homocide_rate"):
+    # Plot the bar chart
+    figure = px.bar(
+                        x=data['Country'],
+                        y=data[str(feature)], 
                         height=300,
-                        labels={'x':feature, 'y':'count'},
+                        labels={'x':'Country', 'y':str(feature)},
                     ).update_layout(
                         template='plotly_dark',
                         plot_bgcolor= 'rgba(0, 0, 0, 0)',
@@ -125,12 +152,12 @@ def drawHistogram(feature = "age"):
                     )
     return figure
 
-# Create container for histogram
-histogram_card = dbc.Card(
+# Create container for barplot
+barplot_card = dbc.Card(
             dbc.CardBody(
                 [
                     dcc.Graph(
-                        id = "histogram",
+                        id = "barplot",
                         config={
                             'displayModeBar': False,
                         }
@@ -140,12 +167,12 @@ histogram_card = dbc.Card(
         )
 
 # Correlation scatter plot with size displaying a third feature
-def drawBubbleChart():
+def drawBubbleChart(data = df):
     return  html.Div([
         dbc.Card(
             dbc.CardBody([
                 dcc.Graph(
-                    figure=px.line(df, x="age", y="duration_days", height=300
+                    figure=px.line(data, x="Number of visa applications", y="Visas issued", height=300
                     ).update_layout(
                         template='plotly_dark',
                         plot_bgcolor= 'rgba(0, 0, 0, 0)',
@@ -159,60 +186,25 @@ def drawBubbleChart():
         ),  
     ])
 
-# Drop down field for country selection
-def dropdownCountry(data, label, feature):
-    # Extract header names
-    list_items = data[feature].unique()
+
+# Define dropdown field
+def dropdown(label, label_list):
     # Remove nans
-    list_items = list_items[~pd.isnull(list_items)]
+    list_items = label_list[~pd.isnull(label_list)]
+    # Convert all features to lower case to allow ordering
+    #list_items = [x.capitalize() for x in list_items]
     # Sort items alphabetically
     list_items.sort()
-    #list_items = {'children': list_items, 'id':list_items}
+    # Create dictionary with labels and name to pass to the dropdown list
     list_items = [{'label':name, 'value':name} for name in list_items]
 
     return  html.Div([
-            dbc.Card(
-                dbc.CardBody([
-                    #dcc.Dropdown(id = "dd", label = "dfdf", value = "sd")
-                    html.H6(label),
-                    dcc.Dropdown(id = label, options=list_items, \
-                    searchable = True, value =list_items[0].get("label")),
-                ])
-            ),  
-        ])
-
-# Drop down field for visa feature
-def dropdownVisa():
-    return  html.Div([
         dbc.Card(
             dbc.CardBody([
-                dbc.DropdownMenu(
-                    label="Select visa feature",
-                    children=[
-                        dbc.DropdownMenuItem("Number of Visa Applications", id = "Number of Visa Applications"),
-                        dbc.DropdownMenuItem("Schengen visas issued", id = "Visas Issued"),
-                        dbc.DropdownMenuItem("Schengen visas denied", id = "Visas Denied"),
-                        dbc.DropdownMenuItem("Total population", id = "total_population"),
-                    ],
-                ) 
-            ])
-        ),  
-    ])
-
-
-
-# Drop down field for geographic feature
-def dropdownGeoFeature():
-    return  html.Div([
-        dbc.Card(
-            dbc.CardBody([
-                dbc.DropdownMenu(
-                    label="Select visa feature",
-                    children=[
-                        dbc.DropdownMenuItem("Total population", id = "mortality_rate_infants"),
-                        dbc.DropdownMenuItem("Life expectancy", id = "life_expectancy_index"),
-                    ],
-                )
+                #dcc.Dropdown(id = "dd", label = "dfdf", value = "sd")
+                html.H6(label),
+                dcc.Dropdown(id = label, options=list_items, \
+                searchable = True, value =list_items[0].get("label")), # first_label
             ])
         ),  
     ])
@@ -225,11 +217,13 @@ def timeSlider():
             dbc.CardBody([
                 html.Div([
                     dbc.Label("Select time period", html_for="slider"),
-                    dcc.RangeSlider(min = 2014, 
+                    dcc.RangeSlider(
+                                    id='time_slider',
+                                    min = 2014, 
                                     max = 2022, 
                                     step = 1, 
-                                    value=[2014, 2020], 
-                                    id='my-range-slider', 
+                                    value=[2016, 2020],
+                                    allowCross=False,
                                     marks={
                                             2014: '2014',
                                             2016: '2016',
@@ -269,19 +263,19 @@ app.layout = html.Div([
                 ], width=8),
                 # Container for user input
                 dbc.Col([
-                    dropdownCountry(data = df, label = "Country of origin", feature = "cap_country"),
-                    dropdownCountry(data = df, label = "Schengen country", feature = "Schengen State"),
-                    dropdownVisa(),
-                    dropdownGeoFeature(),
+                    dropdown(label = "Schengen country", label_list = df["Schengen_country"].unique()),#, first_label= "Germany"),
+                    dropdown(label = "Country of origin", label_list = df["Country"].unique()),#, first_label="India"),
+                    dropdown(label = "Country feature 1", label_list = np.array(feature_list)),#, first_label= "All countries"), # Column pandas index needs conversion to array to allow sorting
+                    dropdown(label = "Country feature 2", label_list = np.array(feature_list)),#, first_label= "All countries"),
                     timeSlider(),
                     html.P(id = "item_display")
                 ], width=4),
             ], align='top'), 
             html.Br(),
             dbc.Row([
-                # Container for histogram
+                # Container for barplot
                 dbc.Col([
-                    histogram_card
+                    barplot_card
                 ], width=4),
                 # Container for bubble chart
                 dbc.Col([
@@ -297,33 +291,34 @@ app.layout = html.Div([
 ################################
 
 @app.callback(
-    Output("item_display", "children"),
-    Output('histogram', 'figure'),
+    Output('barplot', 'figure'),
     Output('worldmap', 'figure'),
+    #Output('bubblechart', 'figure'),
     [
-        Input("Number of Visa Applications", "n_clicks"),
-        Input("Visas Issued", "n_clicks"),
-        Input("Visas Denied", "n_clicks"),
-        Input("total_population", "n_clicks"),
+        Input("Country feature 1", "value"),
+        Input("Schengen country", "value"),
+        Input("time_slider", "value")
     ],
 )
 # Function for callback
-def make_graph(*args):
-    # Extract content of callback
-    ctx = dash.callback_context
+def update_graphs(feature, schengen_country, year_range):
 
-    # If no list item selected set default entry
-    if not ctx.triggered:
-        feature = "Visas Issued"
-    else:
-        # Extract id of list item
-        feature = ctx.triggered[0]["prop_id"].split(".")[0]
-    fig = drawHistogram(feature)
+    # Filter by Schengen country if not all countries are selected
+    if schengen_country != "All countries":
+        df_schengen_country = df[df['Schengen_country'].str.contains(schengen_country)] # includes all rows for selected Schengen countries
 
-    worldmap = drawWorldMap(feature)
-    print(feature)
-    return feature, fig, worldmap
+    # Filter dataset by year range
+    df_filtered_year = df_schengen_country[(df_schengen_country['Year'] >= year_range[0]) & (df_schengen_country['Year'] <= year_range[1])]
+
+    # Draw bar plot with selected feature
+    barplot = drawBarplot(data = df_filtered_year, feature = feature)
+    # Display selected feature on worldmap
+    worldmap = drawWorldMap(data = df_filtered_year, feature = feature)
+    # Bubble chart
 
 
+    return barplot, worldmap
+
+# Run the dashbord on a local server
 if __name__ == "__main__":
     app.run_server(debug=True, port=8050, host='0.0.0.0')
