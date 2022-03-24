@@ -93,14 +93,13 @@ def drawWorldMap(data = df, feature = "total_population"):
                         width=880,
                         height=500,
                         paper_bgcolor='rgba(0,0,0,0)',
-                        plot_bgcolor='#4E5D6C',
+                        #plot_bgcolor=text_color,
                         geo=dict(
                             bgcolor='rgba(0,0,0,0)',
+                            landcolor=text_color,
                             showframe=False,
                             showcoastlines=False,
                             projection_type='equirectangular'
-                            #paper_bgcolor='#4E5D6C',
-                            #plot_bgcolor= 'rgba(0,0,0,0)'
                         ),
                         title={
                             'text': feature,
@@ -109,12 +108,12 @@ def drawWorldMap(data = df, feature = "total_population"):
                             'xanchor': 'center',
                             'yanchor': 'top',
                         },
-                        title_font_color='#525252',
+                        title_font_color=text_color,
                         title_font_size=26,
                         font=dict(
                             family='Heebo', 
                             size=18, 
-                            color='#525252'
+                            color=text_color
                         ),
                         annotations = [dict(
                             x=0.5,
@@ -138,7 +137,7 @@ worldmap_card = html.Div([
                 ])
 
 # Histogram displaying map statistics in detail and ordered by country
-def drawBarplot(data = df, feature = "Homocide_rate"):
+def drawBarplot(data = df, feature = "Visas issued"):
     # Plot the bar chart
     figure = px.bar(
                         x=data['Country'],
@@ -167,24 +166,35 @@ barplot_card = dbc.Card(
         )
 
 # Correlation scatter plot with size displaying a third feature
-def drawBubbleChart(data = df):
-    return  html.Div([
-        dbc.Card(
-            dbc.CardBody([
-                dcc.Graph(
-                    figure=px.line(data, x="Number of visa applications", y="Visas issued", height=300
-                    ).update_layout(
-                        template='plotly_dark',
-                        plot_bgcolor= 'rgba(0, 0, 0, 0)',
-                        paper_bgcolor= 'rgba(0, 0, 0, 0)',
-                    ),
-                    config={
-                        'displayModeBar': False
-                    }
-                ) 
-            ])
-        ),  
-    ])
+def drawBubblePlot(data = df, feature_x = "Visas issued", feature_y = "Visas denied"):
+
+    figure = px.scatter(data, # plot for selected country
+                    x=feature_x,
+                    y=feature_y,
+                    size="Number of visa applications", 
+                    color="Schengen_country",
+                    size_max=60).update_layout(
+                                showlegend=False,
+                                template='plotly_dark',
+                                plot_bgcolor= 'rgba(0, 0, 0, 0)',
+                                paper_bgcolor= 'rgba(0, 0, 0, 0)',
+                                margin={"r":0,"t":0,"l":0,"b":0}
+                                )
+    return figure
+
+# Create container for barplot
+bubbleplot_card = dbc.Card(
+            dbc.CardBody(
+                [
+                    dcc.Graph(
+                        id = "bubble_plot",
+                        config={
+                            'displayModeBar': False,
+                        }
+                    ) 
+                ]
+            )
+        )
 
 
 # Define dropdown field
@@ -243,6 +253,9 @@ def timeSlider():
 # Build app layout
 #############################
 
+# Define text color
+text_color = "#9F9F9F"
+
 # Build App
 app = JupyterDash(external_stylesheets=[dbc.themes.SLATE])
 
@@ -279,7 +292,7 @@ app.layout = html.Div([
                 ], width=4),
                 # Container for bubble chart
                 dbc.Col([
-                    drawBubbleChart()
+                    bubbleplot_card
                 ], width=4),
             ], align='center'),      
         ]), color = 'dark'
@@ -293,15 +306,16 @@ app.layout = html.Div([
 @app.callback(
     Output('barplot', 'figure'),
     Output('worldmap', 'figure'),
-    #Output('bubblechart', 'figure'),
+    Output("bubble_plot", "figure"),
     [
-        Input("Country feature 1", "value"),
         Input("Schengen country", "value"),
+        Input("Country feature 1", "value"),
+        Input("Country feature 2", "value"),
         Input("time_slider", "value")
     ],
 )
 # Function for callback
-def update_graphs(feature, schengen_country, year_range):
+def update_graphs(schengen_country, feature_1, feature_2, year_range):
 
     # Filter by Schengen country if not all countries are selected
     if schengen_country != "All countries":
@@ -311,13 +325,13 @@ def update_graphs(feature, schengen_country, year_range):
     df_filtered_year = df_schengen_country[(df_schengen_country['Year'] >= year_range[0]) & (df_schengen_country['Year'] <= year_range[1])]
 
     # Draw bar plot with selected feature
-    barplot = drawBarplot(data = df_filtered_year, feature = feature)
+    barplot = drawBarplot(data = df_filtered_year, feature = feature_1)
     # Display selected feature on worldmap
-    worldmap = drawWorldMap(data = df_filtered_year, feature = feature)
-    # Bubble chart
+    worldmap = drawWorldMap(data = df_filtered_year, feature = feature_1)
+    # Draw bubbleplot
+    bubbleplot = drawBubblePlot(data=df, feature_x=feature_2, feature_y=feature_1)
 
-
-    return barplot, worldmap
+    return barplot, worldmap, bubbleplot
 
 # Run the dashbord on a local server
 if __name__ == "__main__":
